@@ -15,7 +15,11 @@ salary_data <- read.csv('salaries.csv',stringsAsFactors = FALSE)
 
 vote_data <- read.csv('2012_general_results.csv', stringsAsFactors = FALSE)
 
-subject_data_high <- subset(subject_data, School.Type == 'High')
+truancy_data <- read.csv('truancy.csv', stringsAsFactors = FALSE)
+truancy_data$X <- NULL
+truancy_data$X.1 <- NULL
+
+subject_data_high <- subset(subject_data, High.Grade == 12)
 
 ethnicity_data_high <- subset(ethnicity_data, Grade == '12')
 
@@ -44,7 +48,7 @@ all_data <- merge(x = subject_data_high,
                   by.x = c('Div.Num','Sch.Num'),
                   by.y = c('Division.Number','School.Number'),
                   suffixes = c('.sdh','.acd'))
-
+print(nrow(all_data))
 ## note: we lose a few rows doing this join, not sure why. Some mismatch between school pass rates and accredidation data?
 
 all_data <- merge(x = all_data,
@@ -52,24 +56,86 @@ all_data <- merge(x = all_data,
                   by.x = c('Div.Num', 'Sch.Num'),
                   by.y = c('Division.No.', 'School.No.'),
                   suffixes = c('.ad', '.ed'))
-
+print(nrow(all_data))
 ## losing some more rows here...
 ## why don't they use a consistant naming scheme across all the files? I mean damn, how many ways can one abbreviate "school number"?
+
+all_data <- merge(x = all_data,
+                  y = truancy_data,
+                  by.x = c('Div.Num'),
+                  by.y = c('Division.No'),
+                  suffixes = c('.ad','.t'))
+print(nrow(all_data))
+
 
 all_data <- merge(x = all_data,
                   y = salary_data,
                   by.x = 'Div.Num',
                   by.y = 'Division',
                   suffixes = c('.ad', 'sd'))
-
+print(nrow(all_data))
 ## I don't think we lose any data here
 all_data$Div.Name <- tolower(str_trim(all_data$Div.Name))
-vote_cast_2$LocalityName <- tolower(vote_cast_2$LocalityName)
+vote_cast_3$LocalityName <- tolower(vote_cast_3$LocalityName)
 
 all_data <- merge(x = all_data,
-                  y = vote_cast_2,
+                  y = vote_cast_3,
                   by.x = 'Div.Name',
                   by.y = 'LocalityName',
                   suffixes = c('.ad','.vc2'))
 
+## convert some cols to numeric
+to_num_cols <- c(grep('Male|Female', names(all_data), value = TRUE), 'English', 'Science', 'Mathematics', 'History', 'Total..Full.time...Part.time.Students', 'Truancy.Count', 'GCI', grep('Pass', names(all_data), value = TRUE))
+
+for (col in to_num_cols) {
+    all_data[[col]] <- as.numeric(all_data[[col]])
+}
+
+to_pct_cols <- grep('Male|Female', names(all_data), value = TRUE)
+for (col in to_pct_cols) {
+    all_data[[paste0(col,'.pct')]] <- all_data[[col]]/all_data$Total..Full.time...Part.time.Students
+}
+
+## compute truancy percentage:
+truancy_data_pct <- ddply(all_data,
+                          .(Div.Name),
+                          function(df) {
+                              mean(df$Truancy.Count) / sum(df$Total..Full.time...Part.time.Students)
+                          }
+                          )
+
+names(truancy_data_pct) <- c('Div.Name', 'Truancy.pct')
+
+all_data <- merge(x = all_data,
+                  y = truancy_data_pct,
+                  by = 'Div.Name')
+
+races <- c('Native.Hawaiian', 'White', 'Two.or.more.races', 'Hispanic', 'American.Indian', 'Black')
+for (race in races) {
+    race_cols <- grep('.pct',grep(race, names(all_data), value = TRUE), value = TRUE)
+    all_data[[paste0(race,'.pct')]] <- rowSums(all_data[,race_cols])
+}
+
+
+model_data <- subset(all_data,
+                     Subgroup == 'All Students' & Subject == 'Mathematics',
+                     select = c('Div.Name',
+                                'School.Name',
+                                paste0(races,'.pct'),
+                                grep('Pass', names(all_data), value = TRUE),
+                                'School.Accreditation.Rating',
+                                grep('English|Science|Mathematics|History', names(all_data), value = TRUE),
+                                'Total..Full.time...Part.time.Students',
+                                grep('Salary', names(all_data), value = TRUE),
+                                'Democratic.pct',
+                                'Truancy.pct'
+                                ))
+
+## school level predictors: race as pct, current and historical overall pass rate, accredidation rating, pass rates/accredidations in history, science, and english, mathematics accredidation
+
+## district level predictors: teacher salaries, truancy rates, and pct democratic
+
 write.csv(all_data, 'all_data.csv')
+write.csv(model_data, 'model_data.csv')
+
+
