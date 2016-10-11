@@ -24,6 +24,8 @@ vote_temp <- melt(vote_data_pres, id.vars = c('LocalityName', 'Party'), measure.
 vote_cast <- dcast(vote_temp, formula = LocalityName + Party ~ variable, fun.aggregate = sum)
 
 vote_cast_2 <- dcast(vote_cast, LocalityName ~ Party, value.var = 'TOTAL_VOTES')
+vote_cast_3 <- cbind(vote_cast_2, vote_cast_2[,2:3]/rowSums(vote_cast_2[,2:3]))
+names(vote_cast_3) <- c(names(vote_cast_2), paste(names(vote_cast_2[,2:3]), '.pct', sep=''))
 
 salary_data$FY.2014..Actual.Average.Teacher.Salary <- as.numeric(gsub('\\t|\\s|\\,',
                                                                       '',
@@ -70,4 +72,4 @@ all_data <- merge(x = all_data,
                   by.y = 'LocalityName',
                   suffixes = c('.ad','.vc2'))
 
-write.csv(all_data, 'model_data.csv')
+write.csv(all_data, 'all_data.csv')
