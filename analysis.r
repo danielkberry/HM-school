@@ -1,6 +1,7 @@
 ## load libraries
 library(plyr)
 library(reshape2)
+library(stringr)
 
 ## load and aggregate
 
@@ -21,6 +22,8 @@ ethnicity_data_high <- subset(ethnicity_data, Grade == '12')
 vote_data_pres <- subset(vote_data, OfficeTitle == 'President and Vice President' & Party %in% c('Democratic','Republican'))
 vote_temp <- melt(vote_data_pres, id.vars = c('LocalityName', 'Party'), measure.vars = 'TOTAL_VOTES')
 vote_cast <- dcast(vote_temp, formula = LocalityName + Party ~ variable, fun.aggregate = sum)
+
+vote_cast_2 <- dcast(vote_cast, LocalityName ~ Party, value.var = 'TOTAL_VOTES')
 
 salary_data$FY.2014..Actual.Average.Teacher.Salary <- as.numeric(gsub('\\t|\\s|\\,',
                                                                       '',
@@ -58,5 +61,13 @@ all_data <- merge(x = all_data,
                   suffixes = c('.ad', 'sd'))
 
 ## I don't think we lose any data here
+all_data$Div.Name <- tolower(str_trim(all_data$Div.Name))
+vote_cast_2$LocalityName <- tolower(vote_cast_2$LocalityName)
+
+all_data <- merge(x = all_data,
+                  y = vote_cast_2,
+                  by.x = 'Div.Name',
+                  by.y = 'LocalityName',
+                  suffixes = c('.ad','.vc2'))
 
 write.csv(all_data, 'model_data.csv')
