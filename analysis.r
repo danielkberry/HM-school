@@ -110,7 +110,7 @@ all_data <- merge(x = all_data,
                   y = truancy_data_pct,
                   by = 'Div.Name')
 
-races <- c('Native.Hawaiian', 'White', 'Two.or.more.races', 'Hispanic', 'American.Indian', 'Black')
+races <- c('Native.Hawaiian', 'Asian','White', 'Two.or.more.races', 'Hispanic', 'American.Indian', 'Black')
 for (race in races) {
     race_cols <- grep('.pct',grep(race, names(all_data), value = TRUE), value = TRUE)
     all_data[[paste0(race,'.pct')]] <- rowSums(all_data[,race_cols])
@@ -135,7 +135,35 @@ model_data <- subset(all_data,
 
 ## district level predictors: teacher salaries, truancy rates, and pct democratic
 
-write.csv(all_data, 'all_data.csv')
-write.csv(model_data, 'model_data.csv')
+## write.csv(all_data, 'all_data.csv')
+## write.csv(model_data, 'model_data.csv')
 
 
+######################
+## COMPLETE POOLING ##
+######################
+
+summary(complete <- lm(Mathematics ~ . -Div.Name -School.Name, data = model_data))
+
+print(car::vif(complete))
+
+## lots of collinearity between salaries and racial pcts, taking some out:
+model_data$Native.Hawaiian.pct <- NULL
+model_data$American.Indian.pct <- NULL
+model_data$Two.or.more.races.pct <- NULL
+model_data$FY.2014..Actual.Average.Teacher.Salary <- NULL
+model_data$FY.2015..Actual.Average.Teacher.Salary <- NULL
+## and refitting:
+
+summary(complete <- lm(Mathematics ~ . -Div.Name -School.Name, data = model_data))
+print(car::vif(complete))
+
+################
+## NO POOLING ##
+################
+
+
+
+#####################
+## PARTIAL POOLING ##
+#####################
