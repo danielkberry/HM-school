@@ -1,5 +1,6 @@
 ## load libraries
 library(plyr)
+library(reshape2)
 
 ## load and aggregate
 
@@ -11,9 +12,15 @@ ethnicity_data <- read.csv('school_summaries_ethnicity.csv', stringsAsFactors = 
 
 salary_data <- read.csv('salaries.csv',stringsAsFactors = FALSE)
 
+vote_data <- read.csv('2012_general_results.csv', stringsAsFactors = FALSE)
+
 subject_data_high <- subset(subject_data, School.Type == 'High')
 
 ethnicity_data_high <- subset(ethnicity_data, Grade == '12')
+
+vote_data_pres <- subset(vote_data, OfficeTitle == 'President and Vice President' & Party %in% c('Democratic','Republican'))
+vote_temp <- melt(vote_data_pres, id.vars = c('LocalityName', 'Party'), measure.vars = 'TOTAL_VOTES')
+vote_cast <- dcast(vote_temp, formula = LocalityName + Party ~ variable, fun.aggregate = sum)
 
 salary_data$FY.2014..Actual.Average.Teacher.Salary <- as.numeric(gsub('\\t|\\s|\\,',
                                                                       '',
