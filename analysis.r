@@ -248,19 +248,20 @@ caterpillar_plot <- function(model) {
 ##                        (1 + FY.2016..Budgeted.Average.Teacher.Salary + Democratic.pct + Truancy.pct | Div.Name),
 ##                    model_data)
 
-## no_pooling_2 <- lmer(Mathematics ~ Asian.pct +
-##                        Hispanic.pct +
-##                        Black.pct +
-##                        X2014.2015.Pass.Rate +
-##                        School.Accreditation.Rating +
-##                        English +
-##                        Met.Mathematics +
-##                        History +
-##                        Science +
-##                        Total..Full.time...Part.time.Students +
-##                        FY.2016..Budgeted.Average.Teacher.Salary +
-##                        (1 + FY.2016..Budgeted.Average.Teacher.Salary | Div.Name),
-##                    model_data)
+## doesn't really converge:
+no_pooling_2 <- lmer(Mathematics ~ Asian.pct +
+                       Hispanic.pct +
+                       Black.pct +
+                       X2014.2015.Pass.Rate +
+                       School.Accreditation.Rating +
+                       English +
+                       Met.Mathematics +
+                       History +
+                       Science +
+                       Total..Full.time...Part.time.Students +
+                       FY.2016..Budgeted.Average.Teacher.Salary +
+                       (1 + FY.2016..Budgeted.Average.Teacher.Salary | Div.Name),
+                   model_data)
 
 install.packages('blme')
 library(blme)
@@ -303,8 +304,6 @@ partial_pooling <- lmer(Mathematics ~ Asian.pct +
                        (1 | Div.Num),
                    model_data)
 summary(partial_pooling)
-
-
 
 pp_plot <- caterpillar_plot(partial_pooling)
 plot(pp_plot)
