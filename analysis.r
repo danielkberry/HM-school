@@ -224,6 +224,26 @@ no_pooling <- lmer(Mathematics ~ Asian.pct +
                        (1 + FY.2016..Budgeted.Average.Teacher.Salary + Democratic.pct + Truancy.pct | Div.Name),
                    model_data)
 
+no_pooling_2 <- lmer(Mathematics ~ Asian.pct +
+                       Hispanic.pct +
+                       Black.pct +
+                       X2014.2015.Pass.Rate +
+                       School.Accreditation.Rating +
+                       English +
+                       Mathematics +
+                       Met.Mathematics +
+                       History +
+                       Science +
+                       Total..Full.time...Part.time.Students +
+                       FY.2016..Budgeted.Average.Teacher.Salary +
+                       Democratic.pct +
+                       Truancy.pct +
+                       (1 + FY.2016..Budgeted.Average.Teacher.Salary + Democratic.pct + Truancy.pct | Div.Name),
+                   model_data)
+
+
+
+
 
 #####################
 ## PARTIAL POOLING ##
