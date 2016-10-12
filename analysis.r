@@ -202,6 +202,7 @@ for (var in plot_vars) {
 }
 
 library(lme4)
+library(lattice)
 ################
 ## NO POOLING ##
 ################
@@ -228,7 +229,7 @@ no_pooling <- lmer(Mathematics ~ Asian.pct +
 ## PARTIAL POOLING ##
 #####################
 
-no_pooling <- lmer(Mathematics ~ Asian.pct +
+partial_pooling <- lmer(Mathematics ~ Asian.pct +
                        Hispanic.pct +
                        Black.pct +
                        X2014.2015.Pass.Rate +
@@ -243,3 +244,20 @@ no_pooling <- lmer(Mathematics ~ Asian.pct +
                        Truancy.pct +
                        (1 | Div.Num),
                    model_data)
+summary(partial_pooling)
+
+## inspired by: http://stackoverflow.com/questions/11123147/dotplot-of-random-effects
+theRan <- ranef(partial_pooling, condVar=TRUE)
+pv <- attr(theRan$Div.Num, "postVar")
+se <- pv[1, 1, ]
+theIntercepts <- theRan$Div.Num[, 1, drop=F]
+theFrame <- cbind(theIntercepts, se)
+names(theFrame)[1] <- "Intercept"
+theFrame$Low <- with(theFrame, Intercept - 2 * se)
+theFrame$High <- with(theFrame, Intercept + 2 * se)
+theFrame$Variable <- rownames(theFrame)
+
+freqs <- lapply(names(ranef(partial_pooling)), function(x) cbind(ranef(partial_pooling)[[x]], table(model.frame(partial_pooling)[[x]])))[[1]]
+theFrame <- merge(x = theFrame, y = freqs, by.x = c('Intercept','Variable'), by.y = c('(Intercept)','Var1'))
+
+ggplot(theFrame, aes(y=Intercept, x=Freq)) + geom_linerange(aes(ymin=Low, ymax=High), colour="black") + geom_point(, colour="blue")  + labs(y="Random Intercept", x = 'Number of Schools in District',title='Estimate +- SE')
