@@ -261,3 +261,5 @@ freqs <- lapply(names(ranef(partial_pooling)), function(x) cbind(ranef(partial_p
 theFrame <- merge(x = theFrame, y = freqs, by.x = c('Intercept','Variable'), by.y = c('(Intercept)','Var1'))
 
 ggplot(theFrame, aes(y=Intercept, x=Freq)) + geom_linerange(aes(ymin=Low, ymax=High), colour="black") + geom_point(, colour="blue")  + labs(y="Random Intercept", x = 'Number of Schools in District',title='Estimate +- SE')
+
+ggsave('caterpillar_pp.png')
