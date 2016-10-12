@@ -232,21 +232,21 @@ caterpillar_plot <- function(model) {
     return(p)
 }
 
-## no_pooling <- lmer(Mathematics ~ Asian.pct +
-##                        Hispanic.pct +
-##                        Black.pct +
-##                        X2014.2015.Pass.Rate +
-##                        School.Accreditation.Rating +
-##                        English +
-##                        Met.Mathematics +
-##                        History +
-##                        Science +
-##                        Total..Full.time...Part.time.Students +
-##                        FY.2016..Budgeted.Average.Teacher.Salary +
-##                        Democratic.pct +
-##                        Truancy.pct +
-##                        (1 + FY.2016..Budgeted.Average.Teacher.Salary + Democratic.pct + Truancy.pct | Div.Name),
-##                    model_data)
+no_pooling <- lmer(Mathematics ~ Asian.pct +
+                       Hispanic.pct +
+                       Black.pct +
+                       X2014.2015.Pass.Rate +
+                       School.Accreditation.Rating +
+                       English +
+                       Met.Mathematics +
+                       History +
+                       Science +
+                       Total..Full.time...Part.time.Students +
+                       FY.2016..Budgeted.Average.Teacher.Salary +
+                       Democratic.pct +
+                       Truancy.pct +
+                       (1 + FY.2016..Budgeted.Average.Teacher.Salary + Democratic.pct + Truancy.pct | Div.Name),
+                   model_data)
 
 ## doesn't really converge:
 no_pooling_2 <- lmer(Mathematics ~ Asian.pct +
@@ -278,7 +278,8 @@ no_pooling_2 <- blmer(Mathematics ~ Asian.pct +
                        Total..Full.time...Part.time.Students +
                        FY.2016..Budgeted.Average.Teacher.Salary +
                        (1 + FY.2016..Budgeted.Average.Teacher.Salary | Div.Num),
-                      model_data)
+                      model_data,
+                      cov.prior = wishart)
 
 np_plot <- caterpillar_plot(no_pooling_2)
 plot(np_plot)

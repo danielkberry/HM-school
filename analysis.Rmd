@@ -1,0 +1,38 @@
+---
+title: "School analysis using multilevel models"
+author: "Daniel Berry"
+date: "Oct 11 2016"
+output:
+  revealjs::revealjs_presentation:
+    self_contained: true
+---
+
+## Introduction 
+* For this project we sought to model mathematics pass rate in schools
+using a combination 
+```{r, echo = F}
+library(plyr)
+library(reshape2)
+library(stringr)
+
+```
+
+## Load in initial data 
+```{r}
+subject_data <- read.csv('2015-16_school_subject.csv', stringsAsFactors = FALSE)
+
+accred_data <- read.csv('accreditation_2013_and_after_report.csv', stringsAsFactors = FALSE, skip = 3)
+
+ethnicity_data <- read.csv('school_summaries_ethnicity.csv', stringsAsFactors = FALSE, skip = 4)
+ethnicity_data$School.No. <- gsub('\\,','',ethnicity_data$School.No.)
+ethnicity_data$School.No.[ethnicity_data$School.No. == 260] <- 231
+
+salary_data <- read.csv('salaries.csv',stringsAsFactors = FALSE)
+
+vote_data <- read.csv('2012_general_results.csv', stringsAsFactors = FALSE)
+
+truancy_data <- read.csv('truancy.csv', stringsAsFactors = FALSE)
+truancy_data$X <- NULL
+truancy_data$X.1 <- NULL
+truancy_data <- truancy_data[1:123,]
+```
