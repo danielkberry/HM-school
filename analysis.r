@@ -215,7 +215,57 @@ library(lattice)
 ## NO POOLING ##
 ################
 
-no_pooling <- lmer(Mathematics ~ Asian.pct +
+## inspired by: http://stackoverflow.com/questions/11123147/dotplot-of-random-effects
+caterpillar_plot <- function(model) {
+    theRan <- ranef(model, condVar=TRUE)
+    pv <- attr(theRan$Div.Num, "postVar")
+    se <- pv[1, 1, ]
+    theIntercepts <- theRan$Div.Num[, 1, drop=F]
+    theFrame <- cbind(theIntercepts, se)
+    names(theFrame)[1] <- "Intercept"
+    theFrame$Low <- with(theFrame, Intercept - 2 * se)
+    theFrame$High <- with(theFrame, Intercept + 2 * se)
+    theFrame$Variable <- rownames(theFrame)
+    freqs <- lapply(names(ranef(model)), function(x) cbind(ranef(model)[[x]], table(model.frame(model)[[x]])))[[1]]
+    theFrame <- merge(x = theFrame, y = freqs, by.x = c('Intercept','Variable'), by.y = c('(Intercept)','Var1'))
+    p <- ggplot(theFrame, aes(y=Intercept, x=Freq)) + geom_linerange(aes(ymin=Low, ymax=High), colour="black") + geom_point(, colour="blue")  + labs(y="Random Intercept", x = 'Number of Schools in District',title='Estimate +- SE')
+    return(p)
+}
+
+## no_pooling <- lmer(Mathematics ~ Asian.pct +
+##                        Hispanic.pct +
+##                        Black.pct +
+##                        X2014.2015.Pass.Rate +
+##                        School.Accreditation.Rating +
+##                        English +
+##                        Met.Mathematics +
+##                        History +
+##                        Science +
+##                        Total..Full.time...Part.time.Students +
+##                        FY.2016..Budgeted.Average.Teacher.Salary +
+##                        Democratic.pct +
+##                        Truancy.pct +
+##                        (1 + FY.2016..Budgeted.Average.Teacher.Salary + Democratic.pct + Truancy.pct | Div.Name),
+##                    model_data)
+
+## no_pooling_2 <- lmer(Mathematics ~ Asian.pct +
+##                        Hispanic.pct +
+##                        Black.pct +
+##                        X2014.2015.Pass.Rate +
+##                        School.Accreditation.Rating +
+##                        English +
+##                        Met.Mathematics +
+##                        History +
+##                        Science +
+##                        Total..Full.time...Part.time.Students +
+##                        FY.2016..Budgeted.Average.Teacher.Salary +
+##                        (1 + FY.2016..Budgeted.Average.Teacher.Salary | Div.Name),
+##                    model_data)
+
+install.packages('blme')
+library(blme)
+
+no_pooling_2 <- blmer(Mathematics ~ Asian.pct +
                        Hispanic.pct +
                        Black.pct +
                        X2014.2015.Pass.Rate +
@@ -226,28 +276,12 @@ no_pooling <- lmer(Mathematics ~ Asian.pct +
                        Science +
                        Total..Full.time...Part.time.Students +
                        FY.2016..Budgeted.Average.Teacher.Salary +
-                       Democratic.pct +
-                       Truancy.pct +
-                       (1 + FY.2016..Budgeted.Average.Teacher.Salary + Democratic.pct + Truancy.pct | Div.Name),
-                   model_data)
+                       (1 + FY.2016..Budgeted.Average.Teacher.Salary | Div.Num),
+                      model_data)
 
-no_pooling_2 <- lmer(Mathematics ~ Asian.pct +
-                       Hispanic.pct +
-                       Black.pct +
-                       X2014.2015.Pass.Rate +
-                       School.Accreditation.Rating +
-                       English +
-                       Met.Mathematics +
-                       History +
-                       Science +
-                       Total..Full.time...Part.time.Students +
-                       FY.2016..Budgeted.Average.Teacher.Salary +
-                       (1 + FY.2016..Budgeted.Average.Teacher.Salary | Div.Name),
-                   model_data)
-
-
-
-
+np_plot <- caterpillar_plot(no_pooling_2)
+plot(np_plot)
+ggsave('caterpillar_np.png')
 
 #####################
 ## PARTIAL POOLING ##
@@ -270,20 +304,7 @@ partial_pooling <- lmer(Mathematics ~ Asian.pct +
                    model_data)
 summary(partial_pooling)
 
-## inspired by: http://stackoverflow.com/questions/11123147/dotplot-of-random-effects
-theRan <- ranef(partial_pooling, condVar=TRUE)
-pv <- attr(theRan$Div.Num, "postVar")
-se <- pv[1, 1, ]
-theIntercepts <- theRan$Div.Num[, 1, drop=F]
-theFrame <- cbind(theIntercepts, se)
-names(theFrame)[1] <- "Intercept"
-theFrame$Low <- with(theFrame, Intercept - 2 * se)
-theFrame$High <- with(theFrame, Intercept + 2 * se)
-theFrame$Variable <- rownames(theFrame)
 
-freqs <- lapply(names(ranef(partial_pooling)), function(x) cbind(ranef(partial_pooling)[[x]], table(model.frame(partial_pooling)[[x]])))[[1]]
-theFrame <- merge(x = theFrame, y = freqs, by.x = c('Intercept','Variable'), by.y = c('(Intercept)','Var1'))
 
-ggplot(theFrame, aes(y=Intercept, x=Freq)) + geom_linerange(aes(ymin=Low, ymax=High), colour="black") + geom_point(, colour="blue")  + labs(y="Random Intercept", x = 'Number of Schools in District',title='Estimate +- SE')
-
-ggsave('caterpillar_pp.png')
+pp_plot <- caterpillar_plot(partial_pooling)
+plot(pp_plot)
