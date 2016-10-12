@@ -10,6 +10,9 @@ subject_data <- read.csv('2015-16_school_subject.csv', stringsAsFactors = FALSE)
 accred_data <- read.csv('accreditation_2013_and_after_report.csv', stringsAsFactors = FALSE, skip = 3)
 
 ethnicity_data <- read.csv('school_summaries_ethnicity.csv', stringsAsFactors = FALSE, skip = 4)
+ethnicity_data$School.No. <- gsub('\\,','',ethnicity_data$School.No.)
+## NOTE: SOME SCHOOL IDS ARE WRONG, FIXING:
+ethnicity_data$School.No.[ethnicity_data$School.No. == 260] <- 231
 
 salary_data <- read.csv('salaries.csv',stringsAsFactors = FALSE)
 
@@ -18,6 +21,7 @@ vote_data <- read.csv('2012_general_results.csv', stringsAsFactors = FALSE)
 truancy_data <- read.csv('truancy.csv', stringsAsFactors = FALSE)
 truancy_data$X <- NULL
 truancy_data$X.1 <- NULL
+truancy_data <- truancy_data[1:123,]
 
 subject_data_high <- subset(subject_data, High.Grade == 12)
 
@@ -47,7 +51,8 @@ all_data <- merge(x = subject_data_high,
                   y = accred_data,
                   by.x = c('Div.Num','Sch.Num'),
                   by.y = c('Division.Number','School.Number'),
-                  suffixes = c('.sdh','.acd'))
+                  suffixes = c('.sdh','.acd'),
+                  all = TRUE)
 print(nrow(all_data))
 ## note: we lose a few rows doing this join, not sure why. Some mismatch between school pass rates and accredidation data?
 
@@ -55,7 +60,8 @@ all_data <- merge(x = all_data,
                   y = ethnicity_data_high,
                   by.x = c('Div.Num', 'Sch.Num'),
                   by.y = c('Division.No.', 'School.No.'),
-                  suffixes = c('.ad', '.ed'))
+                  suffixes = c('.ad', '.ed'),
+                  all = TRUE)
 print(nrow(all_data))
 ## losing some more rows here...
 ## why don't they use a consistant naming scheme across all the files? I mean damn, how many ways can one abbreviate "school number"?
@@ -64,15 +70,16 @@ all_data <- merge(x = all_data,
                   y = truancy_data,
                   by.x = c('Div.Num'),
                   by.y = c('Division.No'),
-                  suffixes = c('.ad','.t'))
+                  suffixes = c('.ad','.t'),
+                  all = TRUE)
 print(nrow(all_data))
-
 
 all_data <- merge(x = all_data,
                   y = salary_data,
                   by.x = 'Div.Num',
                   by.y = 'Division',
-                  suffixes = c('.ad', 'sd'))
+                  suffixes = c('.ad', 'sd'),
+                  all = TRUE)
 print(nrow(all_data))
 ## I don't think we lose any data here
 all_data$Div.Name <- tolower(str_trim(all_data$Div.Name))
@@ -82,7 +89,8 @@ all_data <- merge(x = all_data,
                   y = vote_cast_3,
                   by.x = 'Div.Name',
                   by.y = 'LocalityName',
-                  suffixes = c('.ad','.vc2'))
+                  suffixes = c('.ad','.vc2'),
+                  all = TRUE)
 
 ## convert some cols to numeric
 to_num_cols <- c(grep('Male|Female', names(all_data), value = TRUE), 'English', 'Science', 'Mathematics', 'History', 'Total..Full.time...Part.time.Students', 'Truancy.Count', 'GCI', grep('Pass', names(all_data), value = TRUE))
@@ -108,7 +116,8 @@ names(truancy_data_pct) <- c('Div.Name', 'Truancy.pct')
 
 all_data <- merge(x = all_data,
                   y = truancy_data_pct,
-                  by = 'Div.Name')
+                  by = 'Div.Name',
+                  all = TRUE)
 
 races <- c('Native.Hawaiian', 'Asian','White', 'Two.or.more.races', 'Hispanic', 'American.Indian', 'Black')
 for (race in races) {
@@ -120,7 +129,9 @@ for (race in races) {
 model_data <- subset(all_data,
                      Subgroup == 'All Students' & Subject == 'Mathematics',
                      select = c('Div.Name',
+                                'Div.Num',
                                 'School.Name',
+                                'Sch.Num',
                                 paste0(races,'.pct'),
                                 grep('Pass', names(all_data), value = TRUE),
                                 'School.Accreditation.Rating',
@@ -131,6 +142,8 @@ model_data <- subset(all_data,
                                 'Truancy.pct'
                                 ))
 
+icmd <- model_data[!complete.cases(model_data),]
+
 ## school level predictors: race as pct, current and historical overall pass rate, accredidation rating, pass rates/accredidations in history, science, and english, mathematics accredidation
 
 ## district level predictors: teacher salaries, truancy rates, and pct democratic
@@ -138,12 +151,15 @@ model_data <- subset(all_data,
 ## write.csv(all_data, 'all_data.csv')
 ## write.csv(model_data, 'model_data.csv')
 
+## drop incomplete cases lol
+model_data <- model_data[complete.cases(model_data),]
+
 
 ######################
 ## COMPLETE POOLING ##
 ######################
 
-summary(complete <- lm(Mathematics ~ . -Div.Name -School.Name, data = model_data))
+summary(complete <- lm(Mathematics ~ . -Div.Name -School.Name -Sch.Num, data = model_data))
 
 print(car::vif(complete))
 
@@ -153,17 +169,77 @@ model_data$American.Indian.pct <- NULL
 model_data$Two.or.more.races.pct <- NULL
 model_data$FY.2014..Actual.Average.Teacher.Salary <- NULL
 model_data$FY.2015..Actual.Average.Teacher.Salary <- NULL
+## also reducing to just last year's pass rate:
+model_data$X2013.2014.Pass.Rate <- NULL
+model_data$X2015.2016.Pass.Rate <- NULL
 ## and refitting:
 
-summary(complete <- lm(Mathematics ~ . -Div.Name -School.Name, data = model_data))
+summary(complete <- lm(Mathematics ~ . -Div.Name -School.Name -Sch.Num -Div.Num, data = model_data))
 print(car::vif(complete))
 
+## still issues with collinearity, going to drop White.pct, leaving only .pct minority
+model_data$White.pct <- NULL
+
+summary(complete <- lm(Mathematics ~ . -Div.Name -School.Name -Sch.Num -Div.Num, data = model_data))
+print(car::vif(complete))
+
+## probably doesn't make sense to include indicators for passing each subject as well as the pass rate for those subjects:
+
+model_data$Met.English <- NULL
+model_data$Met.History <- NULL
+model_data$Met.Science <- NULL
+
+## and refit: 
+summary(complete <- lm(Mathematics ~ . -Div.Name -School.Name -Sch.Num -Div.Num, data = model_data))
+print(car::vif(complete))
+## this model still satisfies project requirements I think
+
+
+## some plots:
+plot_vars <- c('Asian.pct', 'Hispanic.pct','Black.pct', 'X2014.2015.Pass.Rate', 'English','History', 'Science', 'Total..Full.time...Part.time.Students', 'FY.2016..Budgeted.Average.Teacher.Salary')
+for (var in plot_vars) {
+    print(ggplot(model_data, aes_string(x = var, y = 'Mathematics')) + geom_point() + geom_smooth(method = 'lm'))
+}
+
+library(lme4)
 ################
 ## NO POOLING ##
 ################
 
+no_pooling <- lmer(Mathematics ~ Asian.pct +
+                       Hispanic.pct +
+                       Black.pct +
+                       X2014.2015.Pass.Rate +
+                       School.Accreditation.Rating +
+                       English +
+                       Mathematics +
+                       Met.Mathematics +
+                       History +
+                       Science +
+                       Total..Full.time...Part.time.Students +
+                       FY.2016..Budgeted.Average.Teacher.Salary +
+                       Democratic.pct +
+                       Truancy.pct +
+                       (1 + FY.2016..Budgeted.Average.Teacher.Salary + Democratic.pct + Truancy.pct | Div.Name),
+                   model_data)
 
 
 #####################
 ## PARTIAL POOLING ##
 #####################
+
+no_pooling <- lmer(Mathematics ~ Asian.pct +
+                       Hispanic.pct +
+                       Black.pct +
+                       X2014.2015.Pass.Rate +
+                       School.Accreditation.Rating +
+                       English +
+                       Met.Mathematics +
+                       History +
+                       Science +
+                       Total..Full.time...Part.time.Students +
+                       FY.2016..Budgeted.Average.Teacher.Salary +
+                       Democratic.pct +
+                       Truancy.pct +
+                       (1 | Div.Num),
+                   model_data)
