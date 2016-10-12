@@ -194,6 +194,14 @@ summary(complete <- lm(Mathematics ~ . -Div.Name -School.Name -Sch.Num -Div.Num,
 print(car::vif(complete))
 ## this model still satisfies project requirements I think
 
+View(cor(model_data[,sapply(model_data, is.numeric)]))
+## some correlations but nothing major. It's what you'd expect:
+## pct democratic positively correlated to pct hispanic, black, salary, and school size
+## mathematics highly correlated with last year's pass rate
+## scores correlated with each other
+## pct black/hispanic negatively correlated with school pass rate, pct asian positively correlated
+
+
 
 ## some plots:
 plot_vars <- c('Asian.pct', 'Hispanic.pct','Black.pct', 'X2014.2015.Pass.Rate', 'English','History', 'Science', 'Total..Full.time...Part.time.Students', 'FY.2016..Budgeted.Average.Teacher.Salary')
@@ -213,7 +221,6 @@ no_pooling <- lmer(Mathematics ~ Asian.pct +
                        X2014.2015.Pass.Rate +
                        School.Accreditation.Rating +
                        English +
-                       Mathematics +
                        Met.Mathematics +
                        History +
                        Science +
@@ -230,15 +237,12 @@ no_pooling_2 <- lmer(Mathematics ~ Asian.pct +
                        X2014.2015.Pass.Rate +
                        School.Accreditation.Rating +
                        English +
-                       Mathematics +
                        Met.Mathematics +
                        History +
                        Science +
                        Total..Full.time...Part.time.Students +
                        FY.2016..Budgeted.Average.Teacher.Salary +
-                       Democratic.pct +
-                       Truancy.pct +
-                       (1 + FY.2016..Budgeted.Average.Teacher.Salary + Democratic.pct + Truancy.pct | Div.Name),
+                       (1 + FY.2016..Budgeted.Average.Teacher.Salary | Div.Name),
                    model_data)
 
 
