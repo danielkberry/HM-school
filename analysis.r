@@ -2,6 +2,7 @@
 library(plyr)
 library(reshape2)
 library(stringr)
+library(mice)
 
 ## load and aggregate
 
@@ -142,6 +143,8 @@ model_data <- subset(all_data,
                                 'Truancy.pct'
                                 ))
 
+
+
 icmd <- model_data[!complete.cases(model_data),]
 
 ## school level predictors: race as pct, current and historical overall pass rate, accredidation rating, pass rates/accredidations in history, science, and english, mathematics accredidation
@@ -202,7 +205,7 @@ View(cor(model_data[,sapply(model_data, is.numeric)]))
 ## pct black/hispanic negatively correlated with school pass rate, pct asian positively correlated
 
 
-
+require(ggplot2)
 ## some plots:
 plot_vars <- c('Asian.pct', 'Hispanic.pct','Black.pct', 'X2014.2015.Pass.Rate', 'English','History', 'Science', 'Total..Full.time...Part.time.Students', 'FY.2016..Budgeted.Average.Teacher.Salary')
 for (var in plot_vars) {
@@ -323,3 +326,74 @@ summary(partial_pooling)
 
 pp_plot <- caterpillar_plot(partial_pooling)
 plot(pp_plot)
+
+
+### Multiple Imputation  ++ Training Validation Split
+
+mice_hs <- mice(model_data)
+model_data_mice <- complete(mice_hs)
+
+split <- rbinom(nrow(model_data_mice),1,.8)
+model_data_T <- model_data_mice[split*(1:length(split)),]
+model_data_V <- model_data_mice[-(split*(1:length(split))),]
+
+summary(complete_T <- lm(Mathematics ~ . -Div.Name -School.Name -Sch.Num, data = model_data_T))
+print(car::vif(complete_T))
+
+##R doesn't like the - notation for formatting models, have to fit it on partial dataframe
+predict.lm(complete_T, newdata = model_data_V)
+
+summary(complete_T_2 <- lm(Mathematics ~ ., data = model_data_T[,-c(1:4)]))
+cpooling_pred <- predict.lm(complete_T_2, newdata = model_data_V[,-c(1:4)])
+
+#Basic charts?
+plot(model_data_V$Mathematics, cpooling_pred)
+plot(model_data_V$Mathematics, (model_data_V$Mathematics-cpooling_pred))
+sum((model_data_V$Mathematics-cpooling_pred)^2)
+
+##No Pooling 
+no_pooling_2_T <- blmer(Mathematics ~ Asian.pct +
+                        Hispanic.pct +
+                        Black.pct +
+                        X2014.2015.Pass.Rate +
+                        School.Accreditation.Rating +
+                        English +
+                        Met.Mathematics +
+                        History +
+                        Science +
+                        Total..Full.time...Part.time.Students +
+                        FY.2016..Budgeted.Average.Teacher.Salary +
+                        (1 + FY.2016..Budgeted.Average.Teacher.Salary | Div.Num),
+                      model_data_T,
+                      cov.prior = wishart)
+
+summary(no_pooling_2_T)
+npooling_pred <- predict(no_pooling_2_T, newdata = model_data_V, allow.new.levels=T)
+
+plot(model_data_V$Mathematics, npooling_pred)
+plot(model_data_V$Mathematics, (model_data_V$Mathematics-npooling_pred))
+sum((model_data_V$Mathematics-npooling_pred)^2)
+
+
+##Partial Pooling
+partial_pooling_T <- lmer(Mathematics ~ Asian.pct +
+                          Hispanic.pct +
+                          Black.pct +
+                          X2014.2015.Pass.Rate +
+                          School.Accreditation.Rating +
+                          English +
+                          Met.Mathematics +
+                          History +
+                          Science +
+                          Total..Full.time...Part.time.Students +
+                          FY.2016..Budgeted.Average.Teacher.Salary +
+                          Democratic.pct +
+                          Truancy.pct +
+                          (1 | Div.Num),
+                        model_data_T)
+
+ppooling_pred <- predict(partial_pooling_T, newdata = model_data_V, allow.new.levels=T)
+
+plot(model_data_V$Mathematics, ppooling_pred)
+plot(model_data_V$Mathematics, (model_data_V$Mathematics-ppooling_pred))
+sum((model_data_V$Mathematics-ppooling_pred)^2)
