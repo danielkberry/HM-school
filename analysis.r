@@ -232,6 +232,21 @@ caterpillar_plot <- function(model) {
     return(p)
 }
 
+theFrame <- c()
+for (divnum in unique(model_data$Div.Num)) {
+    divnum <- 1
+    subdata <- model_data[model_data$Div.Num == divnum,]
+    submodel <- lm(Mathematics ~ . -Div.Name -School.Name -Sch.Num -Div.Num -FY.2016..Budgeted.Average.Teacher.Salary -Democratic.pct -Truancy.pct,
+                   data = subdata)
+    est <- summary(submodel)$coefficients[1,1]
+    se <- summary(submodel)$coefficients[1,2]
+    theFrame <- cbind(theFrame,c(est, est-2*se, est+2*se, sum(model_data$Div.Num == divnum)))  
+}
+names(theFrame) <- c('Intercept','Low','High','Freq')
+p <- ggplot(theFrame, aes(y=Intercept, x=Freq)) + geom_linerange(aes(ymin=Low, ymax=High), colour="black") + geom_point(, colour="blue")  + labs(y="Random Intercept", x = 'Number of Schools in District',title='Estimate +- SE')
+
+model_data$Div.Num
+
 no_pooling <- lmer(Mathematics ~ Asian.pct +
                        Hispanic.pct +
                        Black.pct +

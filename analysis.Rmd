@@ -1,13 +1,13 @@
 ---
 title: "School analysis using multilevel models"
-author: "Daniel Berry"
+author: "Daniel Berry and George Rooney"
 date: "Oct 11 2016"
 output:
   revealjs::revealjs_presentation:
     self_contained: true
 ---
 
-## Introduction 
+# Introduction 
 * For this project we sought to model mathematics pass rate in schools
 using a combination 
 ```{r, echo = F}
@@ -16,6 +16,8 @@ library(reshape2)
 library(stringr)
 
 ```
+
+# Loading the data into R
 
 ## Load in initial data 
 ```{r}
@@ -36,3 +38,313 @@ truancy_data$X <- NULL
 truancy_data$X.1 <- NULL
 truancy_data <- truancy_data[1:123,]
 ```
+
+## Load in 2: more loading
+```{r, warning=FALSE}
+subject_data_high <- subset(subject_data, High.Grade == 12)
+
+ethnicity_data_high <- subset(ethnicity_data, Grade == '12')
+
+vote_data_pres <- subset(vote_data, OfficeTitle == 'President and Vice President' & Party %in% c('Democratic','Republican'))
+vote_temp <- melt(vote_data_pres, id.vars = c('LocalityName', 'Party'), measure.vars = 'TOTAL_VOTES')
+vote_cast <- dcast(vote_temp, formula = LocalityName + Party ~ variable, fun.aggregate = sum)
+
+vote_cast_2 <- dcast(vote_cast, LocalityName ~ Party, value.var = 'TOTAL_VOTES')
+vote_cast_3 <- cbind(vote_cast_2, vote_cast_2[,2:3]/rowSums(vote_cast_2[,2:3]))
+names(vote_cast_3) <- c(names(vote_cast_2), paste(names(vote_cast_2[,2:3]), '.pct', sep=''))
+
+salary_data$FY.2014..Actual.Average.Teacher.Salary <- as.numeric(gsub('\\t|\\s|\\,', '', salary_data$FY.2014..Actual.Average.Teacher.Salary))
+
+salary_data$FY.2015..Actual.Average.Teacher.Salary <- as.numeric(gsub('\\t|\\s|\\,', '', salary_data$FY.2015..Actual.Average.Teacher.Salary))
+
+salary_data$FY.2016..Budgeted.Average.Teacher.Salary <- as.numeric(gsub('\\t|\\s|\\,', '', salary_data$FY.2016..Budgeted.Average.Teacher.Salary))
+```
+# Aggregating the data
+
+## Merge subject dataset with accredidation dataset:
+```{r}
+all_data <- merge(x = subject_data_high,
+                  y = accred_data,
+                  by.x = c('Div.Num','Sch.Num'),
+                  by.y = c('Division.Number','School.Number'),
+                  suffixes = c('.sdh','.acd'),
+                  all = TRUE)
+```
+
+
+## Merge on ethnicity data:
+```{r}
+all_data <- merge(x = all_data,
+                  y = ethnicity_data_high,
+                  by.x = c('Div.Num', 'Sch.Num'),
+                  by.y = c('Division.No.', 'School.No.'),
+                  suffixes = c('.ad', '.ed'),
+                  all = TRUE)
+```
+
+## merge on truancy data: 
+```{r}
+all_data <- merge(x = all_data,
+                  y = truancy_data,
+                  by.x = c('Div.Num'),
+                  by.y = c('Division.No'),
+                  suffixes = c('.ad','.t'),
+                  all = TRUE)
+```
+
+## merge on salary data
+```{r}
+all_data <- merge(x = all_data,
+                  y = salary_data,
+                  by.x = 'Div.Num',
+                  by.y = 'Division',
+                  suffixes = c('.ad', 'sd'),
+                  all = TRUE)
+```
+
+## merge on voting data: 
+```{r}
+all_data$Div.Name <- tolower(str_trim(all_data$Div.Name))
+vote_cast_3$LocalityName <- tolower(vote_cast_3$LocalityName)
+
+all_data <- merge(x = all_data,
+                  y = vote_cast_3,
+                  by.x = 'Div.Name',
+                  by.y = 'LocalityName',
+                  suffixes = c('.ad','.vc2'),
+                  all = TRUE)
+```
+
+## compute truancy as a percentage: 
+```{r, echo = FALSE, warning = FALSE}
+to_num_cols <- c(grep('Male|Female', names(all_data), value = TRUE), 'English', 'Science', 'Mathematics', 'History', 'Total..Full.time...Part.time.Students', 'Truancy.Count', 'GCI', grep('Pass', names(all_data), value = TRUE))
+
+for (col in to_num_cols) {
+    all_data[[col]] <- as.numeric(all_data[[col]])
+}
+
+to_pct_cols <- grep('Male|Female', names(all_data), value = TRUE)
+for (col in to_pct_cols) {
+    all_data[[paste0(col,'.pct')]] <- all_data[[col]]/all_data$Total..Full.time...Part.time.Students
+}
+```
+
+```{r}
+## compute truancy percentage:
+truancy_data_pct <- ddply(all_data,
+                          .(Div.Name),
+                          function(df) {
+                              mean(df$Truancy.Count) / sum(df$Total..Full.time...Part.time.Students)
+                          }
+                          )
+
+names(truancy_data_pct) <- c('Div.Name', 'Truancy.pct')
+
+all_data <- merge(x = all_data,
+                  y = truancy_data_pct,
+                  by = 'Div.Name',
+                  all = TRUE)
+```
+
+## convert ethnicity to percent of school composition:
+```{r}
+races <- c('Native.Hawaiian', 'Asian','White', 'Two.or.more.races', 'Hispanic', 'American.Indian', 'Black')
+for (race in races) {
+    race_cols <- grep('.pct',grep(race, names(all_data), value = TRUE), value = TRUE)
+    all_data[[paste0(race,'.pct')]] <- rowSums(all_data[,race_cols])
+}
+```
+
+# Examining the modeling dataset
+
+## Selecting the modeling dataset
+```{r}
+model_data <- subset(all_data,
+                     Subgroup == 'All Students' & Subject == 'Mathematics',
+                     select = c('Div.Name',
+                                'Div.Num',
+                                'School.Name',
+                                'Sch.Num',
+                                paste0(races,'.pct'),
+                                grep('Pass', names(all_data), value = TRUE),
+                                'School.Accreditation.Rating',
+                                grep('English|Science|Mathematics|History', names(all_data), value = TRUE),
+                                'Total..Full.time...Part.time.Students',
+                                grep('Salary', names(all_data), value = TRUE),
+                                'Democratic.pct',
+                                'Truancy.pct'
+                                ))
+```
+
+## Unfortunately there's some missing data: 
+```{r}
+print(paste('Number missing: ',sum(!complete.cases(model_data))))
+```
+
+## We can examine the missing data:
+
+```{r}
+icmd <- model_data[!complete.cases(model_data),]
+knitr::kable(icmd)
+```
+
+## Newslide
+
+In the interest of time decided to do complete case analysis
+```{r}
+model_data <- model_data[complete.cases(model_data),]
+```
+
+# Exploring the data: 
+## Plot of 'Asian.pct':
+```{r, out.width = 600}
+ggplot(model_data, aes_string(x = 'Asian.pct', y = 'Mathematics')) + geom_point() + geom_smooth(method = 'lm')
+```
+
+## Plot of 'Hispanic.pct':
+```{r, out.width = 600}
+ggplot(model_data, aes_string(x = 'Hispanic.pct', y = 'Mathematics')) + geom_point() + geom_smooth(method = 'lm')
+```
+
+## Plot of 'Black.pct':
+```{r, out.width = 600}
+ggplot(model_data, aes_string(x = 'Black.pct', y = 'Mathematics')) + geom_point() + geom_smooth(method = 'lm')
+```
+
+## Plot of 'X2014.2015.Pass.Rate':
+```{r, out.width = 600}
+ggplot(model_data, aes_string(x = 'X2014.2015.Pass.Rate', y = 'Mathematics')) + geom_point() + geom_smooth(method = 'lm')
+```
+
+## Plot of 'English':
+```{r, out.width = 600}
+ggplot(model_data, aes_string(x = 'English', y = 'Mathematics')) + geom_point() + geom_smooth(method = 'lm')
+```
+
+## Plot of 'History':
+```{r, out.width = 600}
+ggplot(model_data, aes_string(x = 'History', y = 'Mathematics')) + geom_point() + geom_smooth(method = 'lm')
+```
+
+## Plot of 'Science':
+```{r, out.width = 600}
+ggplot(model_data, aes_string(x = 'Science', y = 'Mathematics')) + geom_point() + geom_smooth(method = 'lm')
+```
+
+## Plot of 'Total..Full.time Students':
+```{r, out.width = 600}
+ggplot(model_data, aes_string(x = 'Total..Full.time...Part.time.Students', y = 'Mathematics')) + geom_point() + geom_smooth(method = 'lm')
+```
+
+## Plot of 'FY.2016..Budgeted.Salary': 
+
+```{r, out.width = 600}
+ggplot(model_data, aes_string(x = 'FY.2016..Budgeted.Average.Teacher.Salary', y = 'Mathematics')) + geom_point() + geom_smooth(method = 'lm')
+```
+
+## Some collearity:
+```{r}
+car::vif(lm(Mathematics ~ . -Div.Name -School.Name -Sch.Num -Div.Num, model_data))
+```
+
+## Simplify the dataset: 
+```{r}
+model_data$Native.Hawaiian.pct <- NULL
+model_data$American.Indian.pct <- NULL
+model_data$Two.or.more.races.pct <- NULL
+model_data$White.pct <- NULL
+
+model_data$FY.2014..Actual.Average.Teacher.Salary <- NULL
+model_data$FY.2015..Actual.Average.Teacher.Salary <- NULL
+
+model_data$X2013.2014.Pass.Rate <- NULL
+model_data$X2015.2016.Pass.Rate <- NULL
+
+model_data$Met.English <- NULL
+model_data$Met.History <- NULL
+model_data$Met.Science <- NULL
+```
+
+## Which leaves final correlations:
+```{r}
+knitr::kable(cor(model_data[,sapply(model_data, is.numeric)]), digits = 2)
+```
+
+# First model: complete pooling
+
+## Build the model
+Model: $$Math_i = \beta_0 + \sum_{j=1}^{17} \beta_i\cdot x_{ji}$$
+```{r}
+complete <- lm(Mathematics ~ . -Div.Name -School.Name -Sch.Num -Div.Num,
+               data = model_data)
+```
+
+## Examine coefficients:
+```{r, echo = FALSE}
+pander::pander(summary(complete))
+```
+
+# No pooling model
+
+## Issues:
+It's not possible to estimate a no-pooling model for this dataset since there are `r mean(table(model_data$Div.Num) == 1)*100`% of the schools that are in a single school district. 
+
+If we tried to do individal regressions for each "district" we'd have several situations where there's only 1 observation (school) in that district which of course isn't possible. 
+
+
+# Partial pooling models: random intercept and random intercept+slope
+
+
+## Some code to make caterpillar plots
+inspired by: http://stackoverflow.com/questions/11123147/dotplot-of-random-effects
+```{r}
+caterpillar_plot <- function(model) {
+    theRan <- ranef(model, condVar=TRUE)
+    pv <- attr(theRan$Div.Num, "postVar")
+    se <- pv[1, 1, ]
+    theIntercepts <- theRan$Div.Num[, 1, drop=F]
+    theFrame <- cbind(theIntercepts, se)
+    names(theFrame)[1] <- "Intercept"
+    theFrame$Low <- with(theFrame, Intercept - 2 * se)
+    theFrame$High <- with(theFrame, Intercept + 2 * se)
+    theFrame$Variable <- rownames(theFrame)
+    freqs <- lapply(names(ranef(model)), function(x) cbind(ranef(model)[[x]], table(model.frame(model)[[x]])))[[1]]
+    theFrame <- merge(x = theFrame, y = freqs, by.x = c('Intercept','Variable'), by.y = c('(Intercept)','Var1'))
+    p <- ggplot(theFrame, aes(y=Intercept, x=Freq)) + geom_linerange(aes(ymin=Low, ymax=High), colour="black") + geom_point(, colour="blue")  + labs(y="Random Intercept", x = 'Number of Schools in District',title='Estimate +- SE')
+    return(p)
+}
+```
+
+## Random slope model specification:
+$$Math_i = \alpha_{J[i]} + \sum_{j=1}^{17}\beta_j*X_{ji}$$
+
+## Fit model:
+```{r}
+partial_pooling <- lmer(Mathematics ~ Asian.pct +
+                       Hispanic.pct +
+                       Black.pct +
+                       X2014.2015.Pass.Rate +
+                       School.Accreditation.Rating +
+                       English +
+                       Met.Mathematics +
+                       History +
+                       Science +
+                       Total..Full.time...Part.time.Students +
+                       FY.2016..Budgeted.Average.Teacher.Salary +
+                       Democratic.pct +
+                       Truancy.pct +
+                       (1 | Div.Num),
+                   model_data)
+```
+
+## View caterpillar plot:
+```{r, out.width = 600}
+pp_plot <- caterpillar_plot(partial_pooling)
+plot(pp_plot)
+```
+
+## Random slope/intercept model specification:
+$$Math_i = \alpha_{J[i]} + \gamma_{J[i]}*X_{Si} + \eta_{J[i]}*X_{Di} +
+\zeta_{J[i]}*X_{Ti} + \sum_{j=1}^{14}\beta_j*X_{ji}$$
+
+However: there are far too many random effects to estimate. We have 4*87=348 random effects and fewer than 250 observations. Additionally there's the identifiability issues with the random slopes for the districts with only one school.
