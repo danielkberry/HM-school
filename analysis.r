@@ -155,7 +155,7 @@ icmd <- model_data[!complete.cases(model_data),]
 ## write.csv(model_data, 'model_data.csv')
 
 ## drop incomplete cases lol
-model_data <- model_data[complete.cases(model_data),]
+
 
 
 ######################

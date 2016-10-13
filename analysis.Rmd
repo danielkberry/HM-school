@@ -14,7 +14,8 @@ using a combination
 library(plyr)
 library(reshape2)
 library(stringr)
-
+library(mice)
+set.seed(123456)
 ```
 
 # Loading the data into R
@@ -176,26 +177,13 @@ model_data <- subset(all_data,
                                 ))
 ```
 
-## Unfortunately there's some missing data: 
-```{r}
-print(paste('Number missing: ',sum(!complete.cases(model_data))))
-```
 
-## We can examine the missing data:
-
-```{r}
-icmd <- model_data[!complete.cases(model_data),]
-knitr::kable(icmd)
-```
-
-## Newslide
-
-In the interest of time decided to do complete case analysis
-```{r}
-model_data <- model_data[complete.cases(model_data),]
-```
 
 # Exploring the data: 
+
+## Some plots:
+The following are some univariate plots of the predictor variables in the model (using complete cases only)
+
 ## Plot of 'Asian.pct':
 ```{r, out.width = 600}
 ggplot(model_data, aes_string(x = 'Asian.pct', y = 'Mathematics')) + geom_point() + geom_smooth(method = 'lm')
@@ -263,6 +251,8 @@ model_data$X2015.2016.Pass.Rate <- NULL
 model_data$Met.English <- NULL
 model_data$Met.History <- NULL
 model_data$Met.Science <- NULL
+
+model_data$Met.Mathematics[model_data$Met.Mathematics == 'Not Tested'] <- NA
 ```
 
 ## Which leaves final correlations:
@@ -270,30 +260,146 @@ model_data$Met.Science <- NULL
 knitr::kable(cor(model_data[,sapply(model_data, is.numeric)]), digits = 2)
 ```
 
+## Unfortunately there's some missing data: 
+```{r}
+print(paste('Number missing: ',sum(!complete.cases(model_data))))
+```
+
+## Missing data analysis
+
+For 2 categorical variables with missing levels: created a new level for missing:
+
+```{r}
+model_data$Met.Mathematics[is.na(model_data$Met.Mathematics)] <- "Missing"
+model_data$School.Accreditation.Rating[is.na(model_data$School.Accreditation.Rating)] <- "Missing"
+```
+
+For numeric variables we did imputation via `mice`:
+
+```{r}
+mice_hs <- mice(model_data)
+model_data_mice <- complete(mice_hs)
+```
+
+## Split into train/test:
+```{r}
+split <- rbinom(nrow(model_data_mice),1,.8)
+model_data_T <- model_data_mice[split*(1:length(split)),]
+model_data_V <- model_data_mice[-(split*(1:length(split))),]
+```
+
 # First model: complete pooling
 
 ## Build the model
 Model: $$Math_i = \beta_0 + \sum_{j=1}^{17} \beta_i\cdot x_{ji}$$
 ```{r}
-complete <- lm(Mathematics ~ . -Div.Name -School.Name -Sch.Num -Div.Num,
-               data = model_data)
+summary(complete_T <- lm(Mathematics ~ ., data = model_data_T[,-c(1:4)]))
 ```
 
 ## Examine coefficients:
 ```{r, echo = FALSE}
-pander::pander(summary(complete))
+pander::pander(summary(complete_T))
+```
+
+## Predict on new data:
+```{r}
+cpooling_pred <- predict.lm(complete_T, newdata = model_data_V[,-c(1:4)])
+(cp_mse <- sum((model_data_V$Mathematics-cpooling_pred)^2))
+```
+
+## Predicted vs fitted:
+```{r, out.width = 600}
+plot(model_data_V$Mathematics, cpooling_pred)
+```
+
+## Predicted vs residual
+```{r, out.width = 600}
+plot(model_data_V$Mathematics, (model_data_V$Mathematics-cpooling_pred))
 ```
 
 # No pooling model
 
 ## Issues:
-It's not possible to estimate a no-pooling model for this dataset since there are `r mean(table(model_data$Div.Num) == 1)*100`% of the schools that are in a single school district. 
+Due to the fact that there are many districts with only one observation in them, we can't just simply fit an no pooling model, too many coefficients. However, we should be able to place priors on the coefficients and do a bayesian hierarchical model. So far we've only got this working for random slopes for 1 covariate, not sure why we can't do three. 
 
-If we tried to do individal regressions for each "district" we'd have several situations where there's only 1 observation (school) in that district which of course isn't possible. 
+## Fit the model
+```{r}
+no_pooling_2_T <- blmer(Mathematics ~ Asian.pct +
+                        Hispanic.pct +
+                        Black.pct +
+                        X2014.2015.Pass.Rate +
+                        School.Accreditation.Rating +
+                        English +
+                        Met.Mathematics +
+                        History +
+                        Science +
+                        Total..Full.time...Part.time.Students +
+                        FY.2016..Budgeted.Average.Teacher.Salary +
+                        (1 + FY.2016..Budgeted.Average.Teacher.Salary | Div.Num),
+                      model_data_T,
+                      cov.prior = wishart)
+```
 
+## Predict on new data
+```{r, out.width = 600}
+npooling_pred <- predict(no_pooling_2_T, newdata = model_data_V, allow.new.levels=T)
+(np_mse <- sum((model_data_V$Mathematics-npooling_pred)^2))
+```
 
-# Partial pooling models: random intercept and random intercept+slope
+## Predicted fitted plot
+```{r, out.width = 600}
+plot(model_data_V$Mathematics, npooling_pred)
+```
 
+## Predicted vs residual
+```{r, out.width = 600}
+plot(model_data_V$Mathematics, (model_data_V$Mathematics-npooling_pred))
+```
+
+# Partial pooling models: random intercept 
+
+## Random slope model specification:
+$$Math_i = \alpha_{J[i]} + \sum_{j=1}^{17}\beta_j*X_{ji}$$
+
+## Fit model:
+```{r}
+partial_pooling_T <- lmer(Mathematics ~ Asian.pct +
+                          Hispanic.pct +
+                          Black.pct +
+                          X2014.2015.Pass.Rate +
+                          School.Accreditation.Rating +
+                          English +
+                          Met.Mathematics +
+                          History +
+                          Science +
+                          Total..Full.time...Part.time.Students +
+                          FY.2016..Budgeted.Average.Teacher.Salary +
+                          Democratic.pct +
+                          Truancy.pct +
+                          (1 | Div.Num),
+                          model_data_T)
+```
+
+## Examine fit:
+```{r}
+summary(partial_pooling_T)
+```
+
+## Predict on new data
+```{r}
+ppooling_pred <- predict(partial_pooling_T, newdata = model_data_V, allow.new.levels=T)
+(pp_mse <- sum((model_data_V$Mathematics-ppooling_pred)^2))
+```
+
+## Predicted fitted plot
+```{r, out.width = 600}
+plot(model_data_V$Mathematics, ppooling_pred)
+```
+
+## Predicted residual plot
+```{r, out.width = 600}
+plot(model_data_V$Mathematics, (model_data_V$Mathematics-ppooling_pred))
+```
 
 ## Some code to make caterpillar plots
 inspired by: http://stackoverflow.com/questions/11123147/dotplot-of-random-effects
@@ -315,36 +421,27 @@ caterpillar_plot <- function(model) {
 }
 ```
 
-## Random slope model specification:
-$$Math_i = \alpha_{J[i]} + \sum_{j=1}^{17}\beta_j*X_{ji}$$
-
-## Fit model:
-```{r}
-partial_pooling <- lmer(Mathematics ~ Asian.pct +
-                       Hispanic.pct +
-                       Black.pct +
-                       X2014.2015.Pass.Rate +
-                       School.Accreditation.Rating +
-                       English +
-                       Met.Mathematics +
-                       History +
-                       Science +
-                       Total..Full.time...Part.time.Students +
-                       FY.2016..Budgeted.Average.Teacher.Salary +
-                       Democratic.pct +
-                       Truancy.pct +
-                       (1 | Div.Num),
-                   model_data)
-```
-
 ## View caterpillar plot:
 ```{r, out.width = 600}
-pp_plot <- caterpillar_plot(partial_pooling)
+pp_plot <- caterpillar_plot(partial_pooling_T)
 plot(pp_plot)
 ```
 
-## Random slope/intercept model specification:
-$$Math_i = \alpha_{J[i]} + \gamma_{J[i]}*X_{Si} + \eta_{J[i]}*X_{Di} +
-\zeta_{J[i]}*X_{Ti} + \sum_{j=1}^{14}\beta_j*X_{ji}$$
 
-However: there are far too many random effects to estimate. We have 4*87=348 random effects and fewer than 250 observations. Additionally there's the identifiability issues with the random slopes for the districts with only one school.
+
+# Final results
+
+## Model comparison:
+
+Partial pooling performed the best in terms of held out MSE:
+```{r}
+cp_mse
+np_mse
+pp_mse
+```
+
+## Takeaway:
+Using the partial pooling model, we have that school's mathematics passing score is best predicted by its overall pass rate last year, it's accredidation rating, percentage Hispanic, and size. 
+
+## Thoughts:
+- Perhaps using other priors in the no pooling model would have worked better?
